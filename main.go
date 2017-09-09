@@ -10,7 +10,8 @@ import(
     "encoding/json"
     //"time"
     "github.com/gorilla/websocket"
-    "bufio"
+    //"bufio"
+    "bytes"
 )
 
 var(
@@ -90,27 +91,30 @@ func cmdHandle(w http.ResponseWriter, r *http.Request){
         return
     }
     defer ws.Close()
-
+    _, command, errc := ws.ReadMessage()
+    if errc != nil {
+        log.Error(errc.Error())
+        return
+    }
+    cmd := string(command)
+    fmt.Println("command:"+cmd)
     session, err := ssh_client.NewSession()
     if err != nil {
         log.Error(err.Error())
         return
     }
     defer session.Close()
-    
-    _, message, _ := ws.ReadMessage()
-    session.Stdout.Write(message)
-    session.Stderr.Write(message)
-    s := bufio.NewScanner(session.Stdin)
-    for s.Scan(){
-        ws.WriteMessage(websocket.TextMessage, s.Bytes())   
-    }
-    err = session.Shell()
+    var buf bytes.Buffer
+    session.Stdout = &buf
+    session.Stderr = &buf
+    err = session.Run(cmd)
     if err != nil {
         log.Error(err.Error())
         return
     }
-    err = session.Wait()
+    stdout := buf.String()
+    fmt.Println(stdout)
+    err = ws.WriteMessage(websocket.TextMessage, buf.Bytes())
     if err != nil {
         log.Error(err.Error())
         return
