@@ -48,7 +48,7 @@
           _this.msg.push(data)
           _this.scrollTop()
         }
-        console.log(this.msg)
+        _this.scrollTop()
       },
       scrollTop: function () {
         this.$nextTick(() => {
