@@ -1,5 +1,5 @@
 <template>
-  <div class="app">
+  <div class="app" id="app">
     <login :data="win" v-if="win==1" v-on:login-return="getWin"></login>
     <command :data="win" v-if="win==2"></command>
   </div>
@@ -28,12 +28,13 @@
 </script>
 
 <style>
-  .body{
-    text-align: center;
+  html,body{
+    padding:0;
+    margin:0;
+    height: 100%;
   }
   .app{
-    float: left;
-    width: 30%;
-    margin-left: 30%;
+    width: 100%;
+    height: 100%;
   }
 </style>
