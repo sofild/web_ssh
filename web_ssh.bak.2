@@ -1,0 +1,192 @@
+package web_ssh
+
+import (
+	"encoding/json"
+	"fmt"
+	log "github.com/Sirupsen/logrus"
+	"golang.org/x/crypto/ssh"
+	"io"
+	"net/http"
+	"text/template"
+	//"time"
+	"github.com/gorilla/websocket"
+	//"bufio"
+	//"bytes"
+	"strconv"
+)
+
+var (
+	ssh_client *ssh.Client
+	upgrader   = websocket.Upgrader{}
+	mt         = &master{}
+)
+
+type master struct {
+	host string
+	port string
+	user string
+	pass string
+	cols string
+	rows string
+}
+
+func main() {
+	http.Handle("/favicon.ico", http.FileServer(http.Dir("static/dist")))
+	http.Handle("/static/", http.FileServer(http.Dir("static/dist")))
+	http.HandleFunc("/", handle)
+	http.HandleFunc("/cmd", cmdHandle)
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		log.Error(err.Error())
+	} else {
+		log.Info("service start.")
+	}
+}
+
+//处理请求
+func handle(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	if _, ok := r.Form["action"]; ok {
+		action := r.Form["action"][0]
+		if action == "connect" {
+			connect(w, r)
+			return
+		}
+	}
+	html, err := template.ParseFiles("static/dist/index.html")
+	if err != nil {
+		log.Error(err.Error())
+		return
+	}
+	html.Execute(w, nil)
+}
+
+//连接
+func connect(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	mt.host = r.Form["host"][0]
+	mt.port = r.Form["port"][0]
+	mt.user = r.Form["user"][0]
+	mt.pass = r.Form["pass"][0]
+	mt.cols = r.Form["cols"][0]
+	mt.rows = r.Form["rows"][0]
+	config := &ssh.ClientConfig{
+		User: mt.user,
+		Auth: []ssh.AuthMethod{
+			ssh.Password(mt.pass),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+	connstr := fmt.Sprintf("%s:%s", mt.host, mt.port)
+	client, err := ssh.Dial("tcp", connstr, config)
+	ret := make(map[string]string)
+	if err != nil {
+		log.Error(err.Error())
+		ret["msg"] = "connect failed. error:" + err.Error()
+		ret["err"] = "1"
+		data, _ := json.Marshal(ret)
+		io.WriteString(w, string(data))
+		return
+	}
+	ssh_client = client
+	ret["msg"] = "connect success."
+	ret["err"] = "0"
+	dats, _ := json.Marshal(ret)
+	io.WriteString(w, string(dats))
+	return
+}
+
+//命令行处理
+func cmdHandle(w http.ResponseWriter, r *http.Request) {
+	//处理终端
+	ptyCols, errl := strconv.Atoi(mt.cols)
+	if errl != nil {
+		log.Error("cols parse uint: " + errl.Error())
+	}
+	ptyRows, errw := strconv.Atoi(mt.rows)
+	if errw != nil {
+		log.Error("rows parse uint: " + errw.Error())
+	}
+	session, err := ssh_client.NewSession()
+	if err != nil {
+		log.Error("new session: " + err.Error())
+		return
+	}
+	defer session.Close()
+	modes := ssh.TerminalModes{
+		ssh.ECHO:          1,
+		ssh.TTY_OP_ISPEED: 14400,
+		ssh.TTY_OP_OSPEED: 14400,
+	}
+	//处理websocket
+	ws, errs := upgrader.Upgrade(w, r, nil)
+	if errs != nil {
+		log.Error("upgrade: " + errs.Error())
+		return
+	}
+	defer ws.Close()
+	//处理输入
+	msgType, reader, errn := ws.NextReader()
+	if errn != nil {
+		log.Error("next reader: " + errn.Error())
+		return
+	}
+	bufs := make([]byte, 102400)
+	n, _ := reader.Read(bufs)
+	cmd := string(bufs[:n])
+	fmt.Println("command:" + cmd)
+	//处理输出
+	wc, errc := ws.NextWriter(msgType)
+	if errc != nil {
+		log.Error("next writer: " + errc.Error())
+		return
+	}
+	session.Stdin = reader
+	session.Stdout = wc
+	session.Stderr = wc
+	/*
+	_, command, errc := ws.ReadMessage()
+	if errc != nil {
+		log.Error("read message: " + errc.Error())
+		return
+	}
+	cmd := string(command)
+	fmt.Println("command:" + cmd)
+	*/
+	//var buf bytes.Buffer
+	//session.Stdout = &buf
+	//session.Stderr = &buf
+	//reader := bufio.NewReader(session.Stdin)
+	//_, err = reader.Read(command)
+
+	/*
+	var wbuf bytes.Buffer
+	session.Stdin = &wbuf
+	_, err = wbuf.Write(command)
+	if err != nil {
+		fmt.Println("stdin read: " + err.Error())
+		return
+	}*/
+	err = session.RequestPty("xterm", ptyCols, ptyRows, modes)
+	if err != nil {
+		log.Error("request pty: " + err.Error())
+	}
+	err = session.Shell()
+	if err != nil {
+		log.Error("session shell: " + err.Error())
+	}
+	/*
+	stdout := buf.String()
+	fmt.Println(stdout)
+	err = ws.WriteMessage(websocket.TextMessage, buf.Bytes())
+	if err != nil {
+		log.Error("write message: " + err.Error())
+		return
+	}*/
+	err = session.Wait()
+	if err != nil {
+		log.Error("session wait: " + err.Error())
+	}
+	fmt.Println("done..")
+	return
+}
