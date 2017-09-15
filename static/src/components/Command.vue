@@ -1,5 +1,5 @@
 <template>
-  <div class="command">
+  <div class="command" v-bind:data="win">
     <div class="show_command">
       <p v-for="item in msg">
         <label v-if="item.type==='content'">
@@ -26,7 +26,8 @@
         command: '',
         conn: null,
         historyCommand: [],
-        history: 0
+        history: 0,
+        win: 2
       }
     },
     mounted: function () {
@@ -42,6 +43,10 @@
           data.type = 'command'
           this.msg.push(data)
           _this.scrollTop()
+          return
+        }
+        if (this.command === 'exit') {
+          this.win = 1
           return
         }
         var _this = this
@@ -94,7 +99,7 @@
     width: 100%;
     height: 100%;
     background: #000000;
-    padding-left: 2px;
+    padding-left: 0px;
   }
   .command .show_command{
     background: #000000;

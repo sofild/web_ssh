@@ -2,14 +2,21 @@
   <div class="login" v-bind:data="win">
     <h3>连接信息</h3>
     <ul>
-      <li><label>主机：</label><input type="text" v-model="host" /></li>
-      <li><label>端口：</label><input type="text" v-model="port" /></li>
-      <li><label>用户：</label><input type="text" v-model="user" /></li>
-      <li><label>密码：</label><input type="password" v-model="pass" /></li>
+      <li><label>打开：</label><select v-model="curHost" @change="selectHost" class="in login_open">
+            <option :value="0">新建</option>
+            <option v-for="(value, key) in conf" :value="value.host">{{ value.host }}</option>
+        </select>
+      </li>
+      <li><label>主机：</label><input class="in" type="text" v-model="host" /></li>
+      <li><label>端口：</label><input class="in" type="text" v-model="port" /></li>
+      <li><label>用户：</label><input class="in" type="text" v-model="user" /></li>
+      <li><label>密码：</label><input class="in" type="password" v-model="pass" /></li>
+      <li class="login_save"><input type="checkbox" v-model="save" name="save" :value="1" /> 保存信息</li>
       <li class="login_btn"><a href="javascript:void(0);" @click.prevent="connect">确认</a></li>
       <li class="login_msg">{{ msg }}</li>
     </ul>
   </div>
+
 </template>
 
 <script>
@@ -18,20 +25,25 @@ export default {
   name: 'login',
   data () {
     return {
-      host: '192.168.33.138',
+      curHost: 0,
+      host: '',
       port: 22,
-      user: 'vagrant',
-      pass: 'vagrant',
+      user: '',
+      pass: '',
       msg: '',
-      win: 1
+      win: 1,
+      save: 0,
+      conf: window.Conf
     }
   },
   methods: {
     connect: function () {
+      var cols = Math.floor($('body').width() / 15)
+      var rows = Math.floor($('body').height() / 15)
       $.ajax({
         type: 'post',
         dataType: 'json',
-        data: {action: 'connect', host: this.host, port: this.port, user: this.user, pass: this.pass},
+        data: {action: 'connect', host: this.host, port: this.port, user: this.user, pass: this.pass, cols: cols, rows: rows, save: this.save ? 1 : 0},
         url: 'http://' + document.location.host
       }).done((resp) => {
         if (resp.err === '1') {
@@ -44,6 +56,20 @@ export default {
       }).fail((resp) => {
         this.msg = '获取信息失败：服务器错误'
       })
+    },
+    selectHost: function () {
+      if (this.curHost === 0) {
+        this.host = ''
+        this.port = 22
+        this.user = ''
+        this.pass = ''
+        return
+      }
+      var config = this.conf[this.curHost]
+      this.host = config['host']
+      this.port = config['port']
+      this.user = config['user']
+      this.pass = config['pass']
     }
   }
 }
@@ -53,23 +79,23 @@ export default {
 <style scoped>
 .login{
   float: left;
-  width: 30%;
-  margin-left: 30%;
+  width: 20%;
+  margin-left: 40%;
   marign:0 auto;
   text-align: center;
 }
-
 .login h3{
   text-align: center;
   color: #888;
 }
-
 .login ul li{
   display: block;
-  text-align: center;
+  text-align: left;
 }
-
-.login ul li input{
+.login .login_open{
+  height: 40px;
+}
+.login .in{
   border: 1px solid #DADADA;
   color: #888;
   height: 30px;
@@ -78,9 +104,24 @@ export default {
   margin-top: 2px;
   outline: 0 none;
   padding: 3px 3px 3px 5px;
-  width: 70%;
+  width: 100%;
   font-size: 12px;
   line-height:15px;
+  box-shadow: inset 0px 1px 4px #ECECEC;
+  -moz-box-shadow: inset 0px 1px 4px #ECECEC;
+  -webkit-box-shadow: inset 0px 1px 4px #ECECEC;
+}
+.login .login_save {
+  height: 30px;
+  line-height:30px;
+  vertical-align: middle;
+  margin-bottom: 16px;
+  color: #888;
+  text-align: center;
+}
+.login .login_save input{
+  border: 1px solid #DADADA;
+  color: #888;
   box-shadow: inset 0px 1px 4px #ECECEC;
   -moz-box-shadow: inset 0px 1px 4px #ECECEC;
   -webkit-box-shadow: inset 0px 1px 4px #ECECEC;
@@ -110,6 +151,7 @@ export default {
 }
 
 .login .login_msg{
+  height: 30px;
   color: #F00;
   text-align: center;
   line-height: 30px;
